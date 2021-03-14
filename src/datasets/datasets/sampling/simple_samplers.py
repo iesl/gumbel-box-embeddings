@@ -14,7 +14,7 @@ class UniformNegativeSampler(NegtiveSampler):
     def __init__(self,
                  entities: Optional[Iterable[Hashable]] = None,
                  all_positive: Optional[Set[Tuple]] = None,
-                 max_attempts: int = 10000):
+                 max_attempts: int = 40000):
         self.entities_list = list(
             entities
         ) if entities is not None else None  # required by np.choice()
