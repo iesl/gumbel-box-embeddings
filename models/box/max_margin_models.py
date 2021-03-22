@@ -10,6 +10,7 @@ from allennlp.modules.token_embedders import Embedding
 import torch
 import numpy as np
 from ..metrics import HitsAt10, F1WithThreshold
+from ..utils.metrics import single_rank
 from allennlp.training.metrics import F1Measure, FBetaMeasure
 
 
@@ -165,19 +166,20 @@ class MaxMarginBoxModel(BaseBoxModel):
         with torch.no_grad():
             hr_scores = self._get_hr_score(embeddings)
             tr_scores = self._get_tr_score(embeddings)
-
             self.int_volume_dev(hr_scores[-1].item())
 
             # find the spot of zeroth element in the sorted array
-            hr_rank = (
-                torch.argsort(
-                    hr_scores,
-                    descending=True) == hr_scores.shape[0] - 1  # type:ignore
-            ).nonzero().reshape(-1).item()  # type:ignore
-            tr_rank = (
-                torch.argsort(  # type:ignore
-                    tr_scores, descending=True) == tr_scores.shape[0] -
-                1).nonzero().reshape(-1).item()
+            # hr_rank = (
+            #     torch.argsort(
+            #         hr_scores,
+            #         descending=True) == hr_scores.shape[0] - 1  # type:ignore
+            # ).nonzero().reshape(-1).item()  # type:ignore
+            # tr_rank = (
+            #     torch.argsort(  # type:ignore
+            #         tr_scores, descending=True) == tr_scores.shape[0] -
+            #     1).nonzero().reshape(-1).item()
+            hr_rank = single_rank(hr_scores)
+            tr_rank = single_rank(tr_scores)
             self.head_replacement_rank_avg(hr_rank)
             self.tail_replacement_rank_avg(tr_rank)
             avg_rank = (hr_rank + tr_rank) / 2.
@@ -188,8 +190,8 @@ class MaxMarginBoxModel(BaseBoxModel):
             self.tail_hitsat3(tr_rank)
             self.head_hitsat1(hr_rank)
             self.tail_hitsat1(tr_rank)
-            hr_mrr = (1. / (hr_rank + 1))
-            tr_mrr = (1. / (tr_rank + 1))
+            hr_mrr = (1. / hr_rank)
+            tr_mrr = (1. / tr_rank)
             mrr = (hr_mrr + tr_mrr) / 2.
             self.head_replacement_mrr(hr_mrr)
             self.tail_replacement_mrr(tr_mrr)

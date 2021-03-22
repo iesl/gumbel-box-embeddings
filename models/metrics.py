@@ -8,7 +8,7 @@ class HitsAt10(Average):
     def __call__(self, value):
         rank = value
 
-        if rank <= 9:
+        if rank <= 10:
             self._total_value += 1
         self._count += 1
 
@@ -17,7 +17,7 @@ class HitsAt1(Average):
     def __call__(self, value):
         rank = value
 
-        if rank <= 0:
+        if rank <= 1:
             self._total_value += 1
         self._count += 1
 
@@ -26,7 +26,7 @@ class HitsAt3(Average):
     def __call__(self, value):
         rank = value
 
-        if rank <= 2:
+        if rank <= 3:
             self._total_value += 1
         self._count += 1
 
