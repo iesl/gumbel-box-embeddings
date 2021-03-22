@@ -17,7 +17,7 @@ configs - Contains ".jsonnet" files for each experiemnt that we report. These fi
 **Install:
 
 conda create -n neurips2020 python=3.6
-source activate neurips2020
+conda activate neurips2020
 pip install allennlp==0.9.0
 pip install typing_extensions
 pip install networkx
