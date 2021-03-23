@@ -11,17 +11,19 @@ configs - Contains ".jsonnet" files for each experiemnt that we report. These fi
 
 ## Submodules:
 Box embedding implementation - 
-` pip install git+https://github.com/ssdasgupta/boxes.git --no-deps`
+ `pip install git+https://github.com/ssdasgupta/boxes.git --no-deps`
+
 Dataset pipeline implementation - 
 `pip install git+https://github.com/ssdasgupta/datasets.git --no-deps`
 
 ## Install:
-
+```
 conda create -n neurips2020 python=3.6
 conda activate neurips2020
 pip install -r requirement.txt
 pip install git+https://github.com/ssdasgupta/datasets.git --no-deps
 pip install git+https://github.com/ssdasgupta/boxes.git --no-deps
+```
 
 
 
