@@ -511,6 +511,48 @@ class BCEBoxClassificationSplitNegVolPenaltyModel(
             return 0.0
 
 
+@Model.register('BCE-classification-split-neg-vol-penalty-gumbel-box-model')
+class BCEBoxClassificationSplitNegVolPenaltyGumbelModel(BCEBoxClassificationSplitNegVolPenaltyModel):
+    def __init__(self,
+                 num_entities: int,
+                 num_relations: int,
+                 embedding_dim: int,
+                 box_type: str = 'SigmoidBoxTensor',
+                 single_box: bool = False,
+                 softbox_temp: float = 10.,
+                 number_of_negative_samples: int = 0,
+                 debug: bool = False,
+                 regularization_weight: float = 0,
+                 init_interval_center: float = 0.25,
+                 init_interval_delta: float = 0.1,
+                 gumbel_beta=1.0) -> None:
+        super().__init__(
+            num_entities,
+            num_relations,
+            embedding_dim,
+            box_type=box_type,
+            single_box=single_box,
+            softbox_temp=softbox_temp,
+            number_of_negative_samples_head=number_of_negative_samples,
+            number_of_negative_samples_tail=number_of_negative_samples,
+            debug=debug,
+            regularization_weight=regularization_weight,
+            init_interval_center=init_interval_center,
+            init_interval_delta=init_interval_delta)
+
+        self.gumbel_beta = gumbel_beta
+
+    def _get_triple_score(self, head: BoxTensor, tail: BoxTensor,
+                          relation: BoxTensor) -> torch.Tensor:
+        intersection_box = head.gumbel_intersection(tail, gumbel_beta=self.gumbel_beta)
+        intersection_vol = intersection_box._log_soft_volume_adjusted(intersection_box.z,
+            intersection_box.Z, temp=self.softbox_temp, gumbel_beta=self.gumbel_beta)
+        tail_vol = tail._log_soft_volume_adjusted(tail.z, tail.Z,
+            temp=self.softbox_temp, gumbel_beta=self.gumbel_beta)
+        score = intersection_vol - tail_vol
+        return score 
+
+
 @Model.register('BCE-min-vol-reg-box-model')
 class BCEBoxMinVolumeRegModel(BCEBoxModel):
     def get_regularization_penalty(self) -> Union[float, torch.Tensor]:
