@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch
 import numpy as np
 from ..metrics import HitsAt10
+from ..utils.metrics import single_rank
 
 
 @Model.register('transE-model')
@@ -785,3 +786,192 @@ class RotatEModel(TransEModel):
         n_score = scores[1]
         loss = -(self.loss_f(p_score).mean() + self.loss_f(-n_score).mean()) / 2
         return loss + self.regularization_weight*self.reg_loss
+
+
+@Model.register('rotatE-model-ranking')
+class RotatEModelRanking(TransEModelRanking):
+    def __init__(
+            self,
+            num_entities: int,
+            num_relations: int,
+            embedding_dim: int,
+            single_vec: bool = True,
+            regularization_weight: float = 0.0,
+            number_of_negative_samples: int = 3,
+            margin: float = 0.5,
+            epsilon: float = 2.0,
+            vocab: Optional[None] = None,
+            debug: bool = False
+            # we don't need vocab but some api relies on its presence as an argument
+    ) -> None:
+
+        
+        super(RotatEModelRanking, self).__init__(num_entities, num_relations, embedding_dim, 
+                         regularization_weight=regularization_weight,
+                         number_of_negative_samples=number_of_negative_samples)
+
+        self.loss_f: torch.nn.modules._Loss = torch.nn.LogSigmoid()
+        self.create_embeddings_layer_(num_entities,
+                                     num_relations,
+                                     embedding_dim, single_vec, margin, epsilon)
+    def create_embeddings_layer_(self, num_entities: int, num_relations: int,
+                                     embedding_dim: int, single_vec: bool, 
+                                    margin: float, epsilon: float) -> None:
+            self.h = nn.Embedding(
+                num_embeddings=num_entities,
+                embedding_dim=embedding_dim*2)
+
+            if not single_vec:
+                self.t = nn.Embedding(
+                    num_embeddings=num_entities,
+                    embedding_dim=embedding_dim*2)
+            else:
+                self.t = self.h
+
+            self.r = nn.Embedding(
+                num_embeddings=num_relations,
+                embedding_dim=embedding_dim)
+
+            nn.init.xavier_uniform_(self.h.weight.data)
+            nn.init.xavier_uniform_(self.t.weight.data)
+            nn.init.xavier_uniform_(self.r.weight.data)
+
+            self.ent_embedding_range = nn.Parameter(
+                torch.Tensor([(margin + epsilon) / (self.embedding_dim*2)]), 
+                requires_grad=False
+            )
+
+            nn.init.uniform_(
+                tensor = self.h.weight.data, 
+                a=-self.ent_embedding_range.item(), 
+                b=self.ent_embedding_range.item()
+            )
+            nn.init.uniform_(
+                tensor = self.t.weight.data, 
+                a=-self.ent_embedding_range.item(), 
+                b=self.ent_embedding_range.item()
+            )
+
+            self.rel_embedding_range = nn.Parameter(
+                torch.Tensor([(margin + epsilon) / self.embedding_dim]), 
+                requires_grad=False
+            )
+
+            nn.init.uniform_(
+                tensor = self.r.weight.data, 
+                a=-self.rel_embedding_range.item(), 
+                b=self.rel_embedding_range.item()
+            )
+
+            self.margin = margin
+
+            self.appropriate_emb = {
+                'p_h': self.h,
+                'n_h': self.h,
+                'h': self.h,
+                'tr_h': self.h,
+                'hr_e': self.h,
+                'p_t': self.t,
+                'n_t': self.t,
+                't': self.t,
+                'hr_t': self.t,
+                'tr_e': self.t,
+                'p_r': self.r,
+                'n_r': self.r,
+                'r': self.r,
+                'hr_r': self.r,
+                'tr_r': self.r,
+                'label': (lambda x: x)
+            }
+
+    def get_box_embeddings_val(self, h: torch.Tensor, t: torch.Tensor,
+                            r: torch.Tensor, label: torch.Tensor) -> Dict[str, BoxTensor]:
+
+        if not self.is_eval():
+            raise RuntimeError("get_box_embeddings_val called during training")
+        with torch.no_grad():
+            embs = {
+                'h': self.h(h),  # shape=(batch_size, 2, emb_dim)
+                'r': self.r(r),
+                't': self.t(torch.arange(self.num_entities)),  # shape=(batch_size, *,2,emb_dim
+                't_act': t
+            }  # batch_size is assumed to be 1 during rank validation
+
+        return embs
+
+    def get_ranks(self, embeddings: Dict[str, BoxTensor]) -> Any:
+        if not self.is_eval():
+            raise RuntimeError("get_ranks called during training")
+        with torch.no_grad():
+            # hr_scores = self._get_hr_score(embeddings)
+            tr_scores = self._get_triple_score(embeddings['h'], embeddings['t'],
+                                 embeddings['r'])
+            higher_elements = torch.sum(tr_scores[0:-1] > tr_scores[embeddings['t_act']])
+            ties = torch.sum(tr_scores[0:-1] == tr_scores[embeddings['t_act']])
+
+            # find the spot of zeroth element in the sorted array
+            # hr_rank = (
+            #     torch.argsort(
+            #         hr_scores,
+            #         descending=True) == hr_scores.shape[0] - 1  # type:ignore
+            # ).nonzero().reshape(-1).item()  # type:ignore
+            tr_rank = (higher_elements + ties/2 + 1.0).item()
+            # self.head_replacement_rank_avg(hr_rank)
+            self.tail_replacement_rank_avg(tr_rank)
+            # avg_rank = (hr_rank + tr_rank) / 2.
+            avg_rank = tr_rank
+            self.avg_rank(avg_rank)
+            # self.hitsat10(hr_rank)
+            self.hitsat10(tr_rank)
+            # self.head_hitsat3(hr_rank)
+            self.tail_hitsat3(tr_rank)
+            # self.head_hitsat1(hr_rank)
+            self.tail_hitsat1(tr_rank)
+            # hr_mrr = (1. / hr_rank)
+            tr_mrr = (1. / tr_rank)
+            # mrr = (hr_mrr + tr_mrr) / 2.
+            mrr = tr_mrr
+            # self.head_replacement_mrr(hr_mrr)
+            self.tail_replacement_mrr(tr_mrr)
+            self.mrr(mrr)
+
+            return {
+                'hr_rank': 0,
+                'tr_rank': tr_rank,
+                'avg_rank': avg_rank,
+                'hr_mrr': 0,
+                'tr_mrr': tr_mrr,
+                'int_vol': 0,
+                'mrr': mrr
+            }
+
+    def _get_triple_score(self, h: torch.Tensor, t: torch.Tensor,
+                          r: torch.Tensor) -> torch.Tensor:
+        pi = 3.14159265358979323846
+        re_head, im_head = torch.chunk(h, 2, dim=-1)
+        re_tail, im_tail = torch.chunk(t, 2, dim=-1)
+
+        phase_relation = r / (self.rel_embedding_range.item() / pi)
+
+        re_relation = torch.cos(phase_relation)
+        im_relation = torch.sin(phase_relation)
+
+        re_score = re_head * re_relation - im_head * im_relation
+        im_score = re_head * im_relation + im_head * re_relation
+        re_score = re_score - re_tail
+        im_score = im_score - im_tail
+
+        score = torch.stack([re_score, im_score], dim = 0)
+        score = score.norm(dim = 0).sum(dim = -1)
+
+        return self.margin - score
+
+    def get_loss(self, scores: Tuple[torch.Tensor, torch.Tensor],
+                 label: torch.Tensor) -> torch.Tensor:
+        # max margin loss expects label to be float
+        p_score = scores[0]
+        n_score = scores[1]
+
+        loss = -(self.loss_f(p_score).mean() + self.loss_f(-n_score).mean()) / 2
+        return loss + self.regularization_weight*self.reg_loss
+

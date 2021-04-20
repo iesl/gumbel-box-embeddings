@@ -6,9 +6,6 @@ import torch
 from copy import deepcopy
 import plotly.graph_objs as go
 
-euler_gamma = 0.57721566490153286060
-beta = 2.0
-
 # These are Seaborn's paired colors, for reference:
 sns_paired_colors = [
     "#a6cee3",
@@ -126,31 +123,17 @@ def get_box_from_module(box_embedding_module: bm.TBoxTensor,
 def get_box_for_idx(box_embedding: bm.TBoxTensor, idx: int
                     ) -> Tuple[Tuple[float, float], Tuple[float, float]]:
     (x0, y0), (x1, y1) = get_box_from_module(box_embedding, idx)
-    return x0 , x1, y0, y1
+
+    return x0, x1, y0, y1
 
 
 def get_nodes(name2idx: Mapping[str, int],
               box_embedding: Optional[bm.TBoxTensor] = None) -> List[Dict]:
     nodes = []
+
     for color, (name, idx) in zip(colors(), name2idx.items()):
         box_pos = BoxPosition(
             *get_box_for_idx(box_embedding, idx)) if box_embedding else None
-        node = Node(name=name, idx=idx, box=box_pos, color=color)
-        nodes.append(node)
-
-    return nodes
-
-def get_box_for_idx_adjusted(box_embedding: bm.TBoxTensor, idx: int
-                    ) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-    (x0, y0), (x1, y1) = get_box_from_module(box_embedding, idx)
-    return x0 +2 , x1 + 2 , y0 - 2 , y1 - 2
-
-def get_nodes_adjusted(name2idx: Mapping[str, int],
-              box_embedding: Optional[bm.TBoxTensor] = None) -> List[Dict]:
-    nodes = []
-    for color, (name, idx) in zip(colors(), name2idx.items()):
-        box_pos = BoxPosition(
-            *get_box_for_idx_adjusted(box_embedding, idx)) if box_embedding else None
         node = Node(name=name, idx=idx, box=box_pos, color=color)
         nodes.append(node)
 
