@@ -92,6 +92,17 @@ class BoxTensor(object):
         box_val: Tensor = torch.stack((z, Z), -2)
 
         return cls(box_val)
+    
+    @classmethod
+    def get_wW(cls, z, Z):
+        if z.shape != Z.shape:
+            raise ValueError(
+                "Shape of z and Z should be same but is {} and {}".format(
+                    z.shape, Z.shape))
+        w = z
+        W = Z  # type:ignore
+
+        return w, W
 
     @classmethod
     def from_split(cls: Type[TBoxTensor], t: Tensor,
@@ -466,6 +477,17 @@ class BoxTensor(object):
                         scale: Union[float, Tensor] = 1.) -> Tensor:
         res = self._log_soft_volume(self.z, self.Z, temp=temp, scale=scale)
 
+        return res
+    def log_soft_volume_adjusted(self,
+                                 temp: float = 1.,
+                                 gumbel_beta: float = 1.,
+                                 scale: Union[float, Tensor] = 1.
+                                ) -> Tensor:
+        res = self._log_soft_volume_adjusted(self.z,
+                                             self.Z,
+                                             temp=temp,
+                                             gumbel_beta=gumbel_beta,
+                                             scale=scale)
         return res
 
     def dimension_wise_intersection_log_soft_volume(
